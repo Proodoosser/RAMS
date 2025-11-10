@@ -316,7 +316,7 @@ Pull requests приветствуются!
 
 ## 📞 Поддержка
 
-- Telegram: @your_channel
+- Telegram: @proodoosser
 - Email: support@rams-game.com
 - Discord: discord.gg/rams
 
