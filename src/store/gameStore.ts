@@ -11,6 +11,11 @@ export interface Player {
   tricks: number;
   points: number;
   avatar: string;
+  // Расширенные правила
+  passesUsed: number;        // Количество использованных пасов
+  hasFolded: boolean;        // Сложил карты в текущем раунде
+  hasMaltsy: boolean;        // Объявил "мальцов"
+  maltsyBonus: number;       // Бонус за мальцов
 }
 
 export interface Card {
@@ -31,7 +36,7 @@ export interface GameState {
   
   // Игровое состояние
   gameStarted: boolean;
-  gamePhase: 'betting' | 'playing' | 'result' | 'menu';
+  gamePhase: 'betting' | 'declaring' | 'playing' | 'result' | 'menu';
   round: number;
   trick: number;
   trumpSuit: string;
@@ -48,6 +53,10 @@ export interface GameState {
   userBalance: number;
   tonWalletAddress: string | null;
   
+  // Расширенные правила
+  allowFold: boolean;        // Можно ли пасовать
+  declarationPhase: boolean; // Фаза объявления мальцов
+  
   // UI
   isAnimating: boolean;
   soundEnabled: boolean;
@@ -56,13 +65,18 @@ export interface GameState {
   // Методы
   setPlayers: (players: Player[]) => void;
   setCurrentPlayer: (index: number) => void;
-  setGamePhase: (phase: 'betting' | 'playing' | 'result' | 'menu') => void;
+  setGamePhase: (phase: 'betting' | 'declaring' | 'playing' | 'result' | 'menu') => void;
   placeBet: (playerId: number, amount: number) => void;
   startGame: () => void;
   playCard: (playerId: number, cardIndex: number) => void;
   determineTrickWinner: () => void;
   endGame: () => void;
   resetGame: () => void;
+  // Расширенные правила
+  playerFold: (playerId: number) => boolean;
+  declareMaltsy: (playerId: number) => boolean;
+  checkForAutoWin: (playerId: number) => boolean;
+  // Кошелёк
   connectWallet: (address: string) => void;
   depositFunds: (amount: number) => void;
   withdrawFunds: (amount: number) => void;
@@ -89,6 +103,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   maxBet: 500,
   userBalance: 1000, // Начальный баланс
   tonWalletAddress: null,
+  allowFold: true,
+  declarationPhase: false,
   isAnimating: false,
   soundEnabled: true,
   volume: 0.7,
@@ -97,7 +113,11 @@ export const useGameStore = create<GameState>((set, get) => ({
   
   setCurrentPlayer: (index) => set({ currentPlayer: index }),
   
-  setGamePhase: (phase) => set({ gamePhase: phase }),
+  setGamePhase: (phase) => set({ 
+    gamePhase: phase,
+    allowFold: phase === 'declaring', // Пас доступен только в фазе объявления
+    declarationPhase: phase === 'declaring',
+  }),
   
   placeBet: (playerId, amount) => {
     const state = get();
@@ -128,6 +148,10 @@ export const useGameStore = create<GameState>((set, get) => ({
         tricks: 0,
         points: 0,
         avatar: '👤',
+        passesUsed: 0,
+        hasFolded: false,
+        hasMaltsy: false,
+        maltsyBonus: 0,
       },
       {
         id: 1,
@@ -139,6 +163,10 @@ export const useGameStore = create<GameState>((set, get) => ({
         tricks: 0,
         points: 0,
         avatar: '🤖',
+        passesUsed: 0,
+        hasFolded: false,
+        hasMaltsy: false,
+        maltsyBonus: 0,
       },
       {
         id: 2,
@@ -150,6 +178,10 @@ export const useGameStore = create<GameState>((set, get) => ({
         tricks: 0,
         points: 0,
         avatar: '🤖',
+        passesUsed: 0,
+        hasFolded: false,
+        hasMaltsy: false,
+        maltsyBonus: 0,
       },
       {
         id: 3,
@@ -161,6 +193,10 @@ export const useGameStore = create<GameState>((set, get) => ({
         tricks: 0,
         points: 0,
         avatar: '🤖',
+        passesUsed: 0,
+        hasFolded: false,
+        hasMaltsy: false,
+        maltsyBonus: 0,
       },
     ];
     
@@ -247,10 +283,22 @@ export const useGameStore = create<GameState>((set, get) => ({
     const state = get();
     const players = [...state.players];
     
+    // Применяем штраф за нулевую взятку
+    players.forEach(player => {
+      if (!player.hasFolded && player.tricks === 0) {
+        player.balance -= 10;
+        // Логика штрафа
+      }
+    });
+    
     // Определяем победителя
     let winner = players[0];
     for (const player of players) {
-      if (player.points > winner.points) {
+      // Учитываем бонусы
+      const totalPoints = player.points + player.maltsyBonus;
+      const winnerPoints = winner.points + winner.maltsyBonus;
+      
+      if (totalPoints > winnerPoints) {
         winner = player;
       }
     }
@@ -271,6 +319,78 @@ export const useGameStore = create<GameState>((set, get) => ({
       gamePhase: 'result',
       pot: 0,
     });
+  },
+  
+  // Правило паса (сложить карты)
+  playerFold: (playerId: number) => {
+    const state = get();
+    const players = [...state.players];
+    const player = players[playerId];
+    
+    if (!state.allowFold) {
+      return false; // Пас уже недоступен
+    }
+    
+    let penalty = 0;
+    if (player.passesUsed === 0) {
+      // Первый пас бесплатный
+      penalty = 0;
+    } else {
+      // Каждый последующий -25
+      penalty = 25;
+      player.balance -= penalty;
+    }
+    
+    player.passesUsed++;
+    player.hasFolded = true;
+    
+    set({ players });
+    
+    return true;
+  },
+  
+  // Объявление мальцов (валетов)
+  declareMaltsy: (playerId: number) => {
+    const state = get();
+    const players = [...state.players];
+    const player = players[playerId];
+    
+    // Проверяем валетов в руке
+    const jacks = player.cards.filter(card => card.value === 'В');
+    
+    // 4 валета = автоматическая победа
+    if (jacks.length === 4) {
+      player.hasMaltsy = true;
+      player.maltsyBonus = 1000; // Огромный бонус для гарантированной победы
+      player.balance += 10; // Аванс
+      set({ players });
+      return true;
+    }
+    
+    // 2 валета одного цвета = +5 очков
+    const redJacks = jacks.filter(j => j.color === 'red');
+    const blackJacks = jacks.filter(j => j.color === 'black');
+    
+    if (redJacks.length === 2 || blackJacks.length === 2) {
+      player.hasMaltsy = true;
+      player.maltsyBonus = 5;
+      player.balance += 10; // Аванс
+      set({ players });
+      return true;
+    }
+    
+    return false;
+  },
+  
+  // Проверка автопобеды (4 валета)
+  checkForAutoWin: (playerId: number) => {
+    const state = get();
+    const player = state.players[playerId];
+    
+    if (!player) return false;
+    
+    const jacks = player.cards.filter(card => card.value === 'В');
+    return jacks.length === 4;
   },
   
   resetGame: () => {
