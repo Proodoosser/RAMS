@@ -1,7 +1,14 @@
 # 🚀 Космический Рамс - React Native
 
+[![React Native](https://img.shields.io/badge/React%20Native-0.73-blue.svg)](https://reactnative.dev/)
+[![Expo](https://img.shields.io/badge/Expo-50.0-black.svg)](https://expo.dev/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.x-blue.svg)](https://www.typescriptlang.org/)
+[![TON](https://img.shields.io/badge/TON-Integrated-0088CC.svg)](https://ton.org/)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+
 Полнофункциональная карточная игра с интеграцией TON кошелька, системой ставок и экономикой.
-https://github.com/Proodoosser/RAMS.git
+
+**GitHub**: https://github.com/Proodoosser/RAMS.git
 ## 🎮 Возможности
 
 ### ✅ Реализовано
